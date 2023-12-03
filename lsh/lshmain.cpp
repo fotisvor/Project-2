@@ -8,45 +8,78 @@
 #include "../../include/io_utils/io_utils.h"
 #include "../../include/modules/lsh/lsh.h"
 #include "../../include/modules/exact_nn/exact_nn.h"
+#include "../../include/metric/metric.h"
 
 using namespace std;
 #define C 1.2
 
-// Function to visualize the k-NN graph
-void visualizeGraph(const std::vector<std::vector<std::pair<unsigned int, long unsigned int>>>& knn_graph) {
-    std::cout << "Visualization of k-NN graph:" << std::endl;
+void visualizeGraph(const std::vector<std::vector<std::pair<unsigned int, long unsigned int>>>& knn_graph, const std::string& filename) {
+    // Open the file for writing
+    std::ofstream outFile(filename);
+
+    if (!outFile.is_open()) {
+        std::cerr << "Error: Unable to open file " << filename << " for writing." << std::endl;
+        return;
+    }
+
+    outFile << "Visualization of k-NN graph:" << std::endl;
 
     for (size_t i = 0; i < knn_graph.size(); ++i) {
-        std::cout << "Node " << i << " has distance " << knn_graph[i][0].second << " to neighbors: ";
+        outFile << "Node " << i << " has distance " << knn_graph[i][0].second << " to neighbors: ";
 
         // Print neighbor indices
         for (const auto& neighbor : knn_graph[i]) {
-            std::cout << neighbor.first << " ";
+            outFile << neighbor.first << " ";
         }
 
-        std::cout << std::endl;
+        outFile << std::endl;
     }
 
-    std::cout << "Graph visualization complete." << std::endl;
+    outFile << "Graph visualization complete." << std::endl;
+
+    // Close the file
+    outFile.close();
 }
 
 // Function to visualize the results of gnnsSearch
-void visualizeGnnsResults(const std::vector<std::pair<uint32_t, size_t>>& gnns_results) {
-    std::cout << "GNNS Search Results:" << std::endl;
-    for (const auto& result : gnns_results) {
-        std::cout << "Node " << result.first << " has distance " << result.second << std::endl;
+void visualizeGnnsResultsToFile(const std::vector<std::pair<uint32_t, size_t>>& gnns_results, const std::string& output_file) {
+    std::ofstream output_stream(output_file, std::ios::app); // Use append mode to avoid overwriting previous results
+
+    if (!output_stream.is_open()) {
+        std::cerr << "Error opening output file: " << output_file << std::endl;
+        return;
     }
-    std::cout << "GNNS Search visualization complete." << std::endl;
+
+    output_stream << "GNNS Search Results:" << std::endl;
+    for (const auto& result : gnns_results) {
+        output_stream << "Node " << result.first << " has distance " << result.second << std::endl;
+    }
+    output_stream << "GNNS Search visualization complete." << std::endl;
+
+    output_stream.close();
 }
 
+std::vector<std::pair<uint32_t, size_t>> gnnsSearch(
+    const std::vector<std::vector<std::pair<uint32_t, size_t>>>& knn_graph,
+    const std::vector<uint8_t>& query,
+    const std::vector<std::vector<uint8_t>>& dataset) {
 
-// Function to perform GNNS search using the k-NN graph
-std::vector<std::pair<uint32_t, size_t>> gnnsSearch(const std::vector<std::vector<std::pair<uint32_t, size_t>>>& knn_graph, const std::vector<uint8_t>& query) {
+    // Convert query to MNISTImage
+    MNISTImage queryImage;
+    queryImage.features = std::vector<double>(query.begin(), query.end());
+
+    // Convert dataset to vector of MNISTImage
+    std::vector<MNISTImage> mnistDataset;
+    for (const auto& data : dataset) {
+        MNISTImage mnistImage;
+        mnistImage.features = std::vector<double>(data.begin(), data.end());
+        mnistDataset.push_back(mnistImage);
+    }
+
     // Constants for GNNS algorithm
     const size_t R = 5;  // Number of random restarts
     const size_t T = 10; // Number of greedy steps
     const size_t L = 5;  // Number of points to return
-
     // Random restarts loop
     std::vector<std::pair<uint32_t, size_t>> best_results;
     for (size_t r = 0; r < R; ++r) {
@@ -57,29 +90,36 @@ std::vector<std::pair<uint32_t, size_t>> gnnsSearch(const std::vector<std::vecto
         for (size_t t = 0; t < T; ++t) {
             // Add neighbors of the current point to the set S
             const std::vector<std::pair<uint32_t, size_t>>& neighbors = knn_graph[current_point_index];
-
-            std::pair<uint32_t, size_t> closest_neighbor = neighbors[0];  // Assume the first neighbor is the closest initially
-
+            if (neighbors.empty()) {
+                std::cerr << "Error: No neighbors for point " << current_point_index << std::endl;
+                
+                break;
+            }
+            
+            std::pair<uint32_t, size_t> closest_neighbor = neighbors[1];  // Assume the first neighbor is the closest initially
+            
             for (const auto& neighbor : neighbors) {
-                // Use euclidean_distance_rd to compute distances to the query
-                double distance_neighbor = euclidean_distance_rd(neighbor.first, query);
+                // Use calculateDistance to compute distances to the query
+                
+                double distance_neighbor = calculateDistanceL2(mnistDataset[neighbor.second], queryImage);
+                
 
                 // Check if the current neighbor is closer than the previously assumed closest neighbor
-                if (distance_neighbor < euclidean_distance_rd(closest_neighbor.first, query)) {
- 
+                if (distance_neighbor < calculateDistanceL2(mnistDataset[closest_neighbor.second], queryImage)) {
                     closest_neighbor = neighbor;
                 }
             }
-
+            
             // Update the current point to the one minimizing the distance
-            current_point_index = closest_neighbor.first;
+            current_point_index = closest_neighbor.second;
+            
         }
-
+        
         // Collect distances from the last greedy step
         best_results.push_back(knn_graph[current_point_index][0]); // Assuming you want to use the first neighbor in the vector
     }
-
-    // Sort the distances in S and return the top L points with smallest distances
+    
+    // Sort the distances in S and return the top L points with the smallest distances
     std::sort(best_results.begin(), best_results.end(), [&](const auto& a, const auto& b) {
         return a.second < b.second;
     });
@@ -87,6 +127,7 @@ std::vector<std::pair<uint32_t, size_t>> gnnsSearch(const std::vector<std::vecto
     // Return the top L points
     return {best_results.begin(), best_results.begin() + std::min(L, best_results.size())};
 }
+
 static void LSH_Simulation(LSH_Args *args) 
 {
      // Create LSH structure
@@ -107,7 +148,7 @@ static void LSH_Simulation(LSH_Args *args)
         knn_graph[i] = lsh.approximate_KNN(dataset[i]);
         auto stop = std::chrono::high_resolution_clock::now();
     }
-    visualizeGraph(knn_graph);
+    visualizeGraph(knn_graph,args->get_OutputPath());
 
     while (true) {
         std::vector<std::vector<uint8_t>> queries;
@@ -122,11 +163,11 @@ static void LSH_Simulation(LSH_Args *args)
             const auto& query = queries[i];
             auto start = std::chrono::high_resolution_clock::now();
             // Perform GNNS search using the k-NN graph
-            //gnns_results[i] = gnnsSearch(knn_graph, query);
-            //visualizeGnnsResults(gnns_results[i]);
+            gnns_results[i] = gnnsSearch(knn_graph, query,dataset);
 
 
         }
+        visualizeGnnsResultsToFile(gnns_results[0], args->get_OutputPath());
         //visualizeGnnsResults(gnns_results);
         //print_statistics(N, num_queries, ann_results, ann_query_times, enn_distances, enn_query_times);
 

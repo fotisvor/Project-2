@@ -10,12 +10,8 @@
 #include <random>
 #include <set>
 #include <vector>
-
-// Define a structure to represent an MNIST image
-struct MNISTImage
-{
-    std::vector<double> features; // Vector to store pixel values as features
-};
+#include <sstream>
+#include "../../include/metric/metric.h"
 
 // Structure to store search results
 struct SearchResults
@@ -26,7 +22,25 @@ struct SearchResults
     std::vector<double> approximationFactors;
 };
 
-// Calculate Euclidean distance between two MNIST images
+// Function to format time duration as a string
+std::string formatTimeDuration(const std::chrono::microseconds &duration)
+{
+    auto microseconds = duration.count();
+    auto seconds = microseconds / 1000000;
+    microseconds %= 1000000;
+    auto minutes = seconds / 60;
+    seconds %= 60;
+    auto hours = minutes / 60;
+    minutes %= 60;
+
+    std::ostringstream oss;
+    oss << hours << "h " << minutes << "m " << seconds << "s " << microseconds << "microseconds";
+    
+    
+    return oss.str();
+}
+
+// Calculate Euclidean distance between two MNIST images //
 double calculateDistance(const MNISTImage &img1, const MNISTImage &img2)
 {
     double sum = 0.0;
@@ -36,21 +50,21 @@ double calculateDistance(const MNISTImage &img1, const MNISTImage &img2)
         double diff = img1.features[i] - img2.features[i];
         sum += diff * diff;
     }
-    // Return the square root for Euclidean distance
+    // Return the sqr root for Euclidean distance //
     return std::sqrt(sum);
 }
 
-// Function to approximate the distance between two MNIST images based on MRNG construction
+// Function to approximate the distance between two MNIST images based on MRNG_construction //
 double approximateDistanceFunction(const MNISTImage &img1, const MNISTImage &img2, const std::set<size_t> &neighbors)
 {
-    // Maybe better implementation here
+    // Maybe better implementation here ---------------------------------------??
     return calculateDistance(img1, img2);
 }
 
-// Function to perform a search on the graph with distances and return results
+// Function to perform search on graph with distances and return results
 SearchResults searchOnGraphWithDistances(const std::vector<std::set<size_t>> &graph, size_t start,
-                                         const MNISTImage &query, size_t k, const std::vector<MNISTImage> &mnistDataset,
-                                         size_t candidateLimit)
+    const MNISTImage &query, size_t k, const std::vector<MNISTImage> &mnistDataset,
+    size_t candidateLimit)
 {
     SearchResults result;
     std::vector<bool> checked(graph.size(), false);
@@ -64,7 +78,7 @@ SearchResults searchOnGraphWithDistances(const std::vector<std::set<size_t>> &gr
     {
         size_t current = result.indices.back();
 
-        // Iterate over neighbors of the current node
+        // Iterate over neighbors of the current node //
         for (size_t neighbor : graph[current])
         {
             if (!checked[neighbor])
@@ -75,21 +89,21 @@ SearchResults searchOnGraphWithDistances(const std::vector<std::set<size_t>> &gr
 
                 candidates.emplace_back(neighbor, trueDistance);
 
-                // Store both true and approximate distances
+                //true and approximate distances//
                 result.trueDistances.push_back(trueDistance);
                 result.approximateDistances.push_back(approximateDistance);
 
-                // Calculate and store the approximation factor
+                // Calculate and store the approximation factor maf
                 double approximationFactor = approximateDistance / trueDistance;
                 result.approximationFactors.push_back(approximationFactor);
             }
         }
 
-        // Sort candidates in ascending order of distance to q
+        // Sort the candidates in ascending order of distance to q //
         std::sort(candidates.begin(), candidates.end(),
                   [](const auto &lhs, const auto &rhs) { return lhs.second < rhs.second; });
 
-        // Add the closest node to the result
+        // Add the closest node to the result //
         result.indices.push_back(candidates[0].first);
         checked[candidates[0].first] = true;
         candidates.clear();
@@ -100,12 +114,12 @@ SearchResults searchOnGraphWithDistances(const std::vector<std::set<size_t>> &gr
     return result;
 }
 
-// Function to construct the MRNG
+// fucntion Of MRNG CONSTRUCTION //
 std::vector<std::set<size_t>> constructMRNG(const std::vector<MNISTImage> &dataset, size_t candidateLimit)
 {
     std::vector<std::set<size_t>> neighbors(dataset.size());
 
-    // Initialize a random number generator
+    // Initialize a rng / random number gen//
     std::random_device rd;
     std::mt19937 gen(rd());
 
@@ -116,7 +130,7 @@ std::vector<std::set<size_t>> constructMRNG(const std::vector<MNISTImage> &datas
         std::vector<size_t> candidateNeighbors(candidateLimit);
         std::iota(candidateNeighbors.begin(), candidateNeighbors.end(), 0);
 
-        // Shuffle the candidate neighbors randomly
+        // Shuffle the candidate neighbors randomly //
         std::shuffle(candidateNeighbors.begin(), candidateNeighbors.end(), gen);
 
         for (size_t q : candidateNeighbors)
@@ -151,23 +165,23 @@ std::vector<std::set<size_t>> constructMRNG(const std::vector<MNISTImage> &datas
     return neighbors;
 }
 
-// Function to find the nearest neighbor on the MRNG
+// Function to find the nearest neighbor on  MRNG //
 size_t findNearestNeighborOnGraph(const std::vector<MNISTImage> &dataset, const MNISTImage &query,
                                   const std::vector<std::set<size_t>> &mrngEdges, size_t candidateLimit)
 {
-    size_t startNode = 0; // You can choose any starting node here
+    size_t startNode = 0; 
     return searchOnGraphWithDistances(mrngEdges, startNode, query, 1, dataset, candidateLimit).indices[1];
 }
 
-// Function to find the top/closest N neighbors on the MRNG
+// Function to find the top/closest N neighbors on the MRNG //
 std::vector<size_t> findTopNNeighborsOnGraph(const std::vector<MNISTImage> &dataset, const MNISTImage &query, const std::vector<std::set<size_t>> &mrngEdges, size_t N,
-                                             size_t candidateLimit)
+    size_t candidateLimit)
 {
     return searchOnGraphWithDistances(mrngEdges, findNearestNeighborOnGraph(dataset, query, mrngEdges, candidateLimit), query, N, dataset, candidateLimit)
         .indices;
 }
 
-// Function to load MNIST images from a binary file
+// Function to load MNIST_images from a binary file //
 std::vector<MNISTImage> loadMNISTImages(const std::string &filename)
 {
     std::ifstream file(filename, std::ios::binary);
@@ -177,19 +191,19 @@ std::vector<MNISTImage> loadMNISTImages(const std::string &filename)
         exit(EXIT_FAILURE);
     }
 
-    // Get the size of the file
+    // Get the size of the file/dataset //
     file.seekg(0, std::ios::end);
     std::streampos fileSize = file.tellg();
     file.seekg(0, std::ios::beg);
 
-    // Calculate the number of images based on file size
-    size_t imageSize = 28 * 28 + 1; // Each image is 28*28 pixels, plus 1 for the label
+    // Calculate the number of images based on file size //
+    size_t imageSize = 28 * 28 + 1; // Each image is 28*28 pixels, label is +1 //
     size_t numImages = static_cast<size_t>(fileSize / imageSize);
 
-    // Print the number of images being read
+    // Print the number of images being read //
     std::cout << "Reading " << numImages << " images from the input file." << std::endl;
 
-    // Skip header information
+    // Skip header info //
     file.seekg(16);
 
     std::vector<MNISTImage> dataset(numImages);
@@ -197,7 +211,7 @@ std::vector<MNISTImage> loadMNISTImages(const std::string &filename)
     {
         dataset[i].features.resize(28 * 28);
 
-        for (int j = 0; j< 28 * 28; ++j)
+        for (int j = 0; j < 28 * 28; ++j)
         {
             uint8_t pixelValue;
             file.read(reinterpret_cast<char *>(&pixelValue), sizeof(pixelValue));
@@ -208,7 +222,7 @@ std::vector<MNISTImage> loadMNISTImages(const std::string &filename)
     return dataset;
 }
 
-// Function to visualize the MRNG
+//visualize the MRNG //
 void visualizeMRNG(const std::vector<std::set<size_t>> &neighbors, const std::string &filename)
 {
     std::ofstream dotFile(filename);
@@ -282,6 +296,8 @@ int main(int argc, char *argv[])
             queryImage.features[i] = static_cast<double>(pixelValue) / 255.0;
         }
 
+        auto startQueryTime = std::chrono::high_resolution_clock::now();
+
         size_t nearestNeighborOnGraph = findNearestNeighborOnGraph(mnistDataset, queryImage, mrngEdges, candidateLimit);
         double nearestNeighborDistanceOnGraph = calculateDistance(queryImage, mnistDataset[nearestNeighborOnGraph]);
 
@@ -290,6 +306,25 @@ int main(int argc, char *argv[])
                   << ", Distance: " << nearestNeighborDistanceOnGraph << std::endl;
 
         SearchResults searchResults = searchOnGraphWithDistances(mrngEdges, nearestNeighborOnGraph, queryImage, numNeighbors, mnistDataset, candidateLimit);
+
+        auto endQueryTime = std::chrono::high_resolution_clock::now();
+        auto elapsedQueryTime = std::chrono::duration_cast<std::chrono::microseconds>(endQueryTime - startQueryTime).count();
+
+        std::cout << "Query Time: " << elapsedQueryTime << " microseconds" << std::endl;
+
+        double totalTrueDistanceTime = std::accumulate(searchResults.trueDistances.begin(), searchResults.trueDistances.end(), 0.0);
+        double totalApproximateDistanceTime = std::accumulate(searchResults.approximateDistances.begin(), searchResults.approximateDistances.end(), 0.0);
+
+        // Calculate average times for the current query for the average //
+        double averageTrueDistanceTime = totalTrueDistanceTime / numNeighbors;
+        double averageApproximateDistanceTime = totalApproximateDistanceTime / numNeighbors;
+
+        // Format times for display //
+        std::string formattedAverageTrueDistanceTime = formatTimeDuration(std::chrono::microseconds(static_cast<long long>(averageTrueDistanceTime)));
+        std::string formattedAverageApproximateDistanceTime = formatTimeDuration(std::chrono::microseconds(static_cast<long long>(averageApproximateDistanceTime)));
+
+        std::cout << "Average True Distance Time: " << formattedAverageTrueDistanceTime << std::endl;
+        std::cout << "Average Approximate Distance Time: " << formattedAverageApproximateDistanceTime << std::endl;
 
         std::cout << "Top " << numNeighbors << " Neighbors (Search on Graph):" << std::endl;
         for (size_t i = 0; i < numNeighbors && i < searchResults.indices.size(); ++i)
@@ -312,12 +347,15 @@ int main(int argc, char *argv[])
     auto endTimeSearch = std::chrono::high_resolution_clock::now();
     auto elapsedTimeSearch = std::chrono::duration_cast<std::chrono::seconds>(endTimeSearch - startTimeSearch).count();
 
-    std::cout << "Search Execution Time: " << elapsedTimeSearch << " seconds" << std::endl;
+    std::cout << "Search Execution Time is : " << elapsedTimeSearch << "seconds" << std::endl;
     visualizeMRNG(mrngEdges, "mrng_visualization.dot");
 
-    auto endTimeTotal = std::chrono::high_resolution_clock::now();
-    auto elapsedTimeTotal = std::chrono::duration_cast<std::chrono::seconds>(endTimeTotal - startTimeTotal).count();
-    std::cout << "Total Execution Time: " << elapsedTimeTotal << " seconds" << std::endl;
+    auto endTimeTotal = std::chrono::
+    high_resolution_clock::now();
+    
+    auto elapsedTimeTotal = std::chrono::duration_cast<std::chrono::seconds>(endTimeTotal-startTimeTotal).count();
+
+    std::cout << "Total Execution Time is:" << elapsedTimeTotal << " seconds" << std::endl;
 
     return 0;
 }
